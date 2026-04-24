@@ -128,6 +128,7 @@ cython_debug/
 
 # Output and generated files
 output/
+outputs/
 images/*.png
 !images/project.png
 *.mp4
