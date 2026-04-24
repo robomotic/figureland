@@ -1,0 +1,7 @@
+train_ratio: 0.8
+val_ratio: 0.1
+test_ratio: 0.1
+seed_offsets:
+  train: 0
+  val: 1000000
+  test: 2000000

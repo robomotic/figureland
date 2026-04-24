@@ -1,0 +1,11 @@
+shape_types:
+  - square
+  - rectangle
+  - triangle
+  - hexagon
+  - trapezoid
+size_range: [0.05, 0.2]
+mass_range: [0.1, 10.0]
+elasticity_range: [0.2, 0.9]
+aspect_ratio_mode: variable
+fixed_aspect_ratio: null

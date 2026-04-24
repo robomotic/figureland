@@ -1,0 +1,9 @@
+environment_type: rectangle
+bounds: [-1.0, 1.0]
+gravity: 9.8
+friction: 0.05
+air_resistance: 0.01
+force_field: null
+dt: 0.016666666666666666
+substeps: 4
+collisions_enabled: True
