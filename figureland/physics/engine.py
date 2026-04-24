@@ -159,7 +159,7 @@ class Environment:
         return True
 
     def _check_penetration(self, shape: Shape) -> torch.Tensor:
-        """Check if new shape penetrates any existing shapes."""
+        """Check if new shape penetrates any existing shapes using AABB collision."""
         if not self.shapes:
             return torch.zeros(shape.position.shape[0], dtype=torch.bool, device=self.device)
 
@@ -167,9 +167,10 @@ class Environment:
 
         for existing in self.shapes:
             delta = shape.position - existing.position
-            dist = torch.norm(delta, dim=1)
-            min_dist = shape.size[:, 0] + existing.size[:, 0]  # sum of half-sizes
-            penetrating |= dist < min_dist
+            # Check AABB overlap: both x and y differences must be less than sum of half-sizes
+            x_pen = torch.abs(delta[:, 0]) < (shape.size[:, 0] + existing.size[:, 0])
+            y_pen = torch.abs(delta[:, 1]) < (shape.size[:, 1] + existing.size[:, 1])
+            penetrating |= (x_pen & y_pen)
 
         return penetrating
 
@@ -227,6 +228,7 @@ class Environment:
         return env
 
 
+class PhysicsEngine:
     """
     Batched physics simulation engine using PyTorch tensors.
 
