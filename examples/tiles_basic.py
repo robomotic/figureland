@@ -2,14 +2,14 @@
 """
 Example: Tiles-based falling balls simulation.
 
-Loads tiles from a 4x4 grid PNG image and places them on a large background.
-Uses PIL to extract individual tiles and render them as falling circles on a 16x8 tile background.
+Loads a single tile from a 4x4 grid PNG image and repeats it across a large background.
+Uses PIL and imageio for image/video processing.
 """
 
 import os
-import cv2
 import numpy as np
 from PIL import Image
+import imageio
 
 # Tile configuration
 TILES_IMAGE = 'images/tiles.png'
@@ -19,32 +19,23 @@ BACKGROUND_TILES_WIDE = 16
 BACKGROUND_TILES_TALL = 8
 
 
-def load_tiles(image_path, grid_cols, grid_rows):
-    """Load tiles from a PNG image and extract individual tiles."""
-    img = Image.open(image_path)
-    img_width, img_height = img.size
-    
-    tile_width = img_width // grid_cols
-    tile_height = img_height // grid_rows
-    
-    tiles = []
-    for row in range(grid_rows):
-        for col in range(grid_cols):
-            # Extract tile region
-            left = col * tile_width
-            top = row * tile_height
-            right = left + tile_width
-            bottom = top + tile_height
-            
-            tile = img.crop((left, top, right, bottom))
-            tiles.append(tile)
-    
-    return tiles
-
-
 def main():
     print(f"Loading tiles from {TILES_IMAGE}...")
-    tiles = load_tiles(TILES_IMAGE, GRID_COLS, GRID_ROWS)
+    
+    # Load all tiles from the 4x4 grid
+    img = Image.open(TILES_IMAGE)
+    img_width, img_height = img.size
+    tile_width = img_width // GRID_COLS
+    tile_height = img_height // GRID_ROWS
+    
+    tiles = []
+    for row in range(GRID_ROWS):
+        for col in range(GRID_COLS):
+            left = col * tile_width
+            top = row * tile_height
+            tile = img.crop((left, top, left + tile_width, top + tile_height))
+            tiles.append(tile)
+    
     print(f"Loaded {len(tiles)} tiles (4x4 grid)")
     
     # Pick ONE random tile to use for the entire background
@@ -53,11 +44,9 @@ def main():
     tile_arr = np.array(tile.convert('RGB'))
     print(f"Selected tile {tile_idx} for background (will repeat)")
     
-    # Get tile dimensions
-    tile_width, tile_height = tile.size
     print(f"Tile size: {tile_width}x{tile_height}")
     
-    # Create large background
+    # Create large background dimensions
     bg_width = tile_width * BACKGROUND_TILES_WIDE
     bg_height = tile_height * BACKGROUND_TILES_TALL
     print(f"Background: {bg_width}x{bg_height} ({BACKGROUND_TILES_WIDE}x{BACKGROUND_TILES_TALL} tiles)")
@@ -72,7 +61,7 @@ def main():
     gravity = 9.8
     elasticity = 0.8
     
-    # Initialize ball positions (random x, y at top)
+    # Initialize ball positions and properties
     np.random.seed(42)
     ball_x = np.random.uniform(0.1, bg_width - 0.1, num_balls)
     ball_y = np.random.uniform(0.8 * bg_height, bg_height - 0.1, num_balls)
@@ -84,14 +73,18 @@ def main():
         for _ in range(num_balls)
     ]
     
-    # Create video writer
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    writer = cv2.VideoWriter('./output/tiles_basic.mp4', fourcc, fps, (bg_width, bg_height))
+    # Create video writer using imageio (better codec support)
+    writer = imageio.get_writer(
+        './output/tiles_basic.mp4',
+        fps=fps,
+        codec='libx264',
+        pixelformat='yuv420p'
+    )
     
     print(f"Generating {num_frames} frame simulation with {num_balls} balls...")
     
     for frame_idx in range(num_frames):
-        # Create dark background with tiled pattern
+        # Create background with tiled pattern
         frame = np.zeros((bg_height, bg_width, 3), dtype=np.uint8)
         
         # Draw tiled background - repeat the SAME tile everywhere
@@ -101,7 +94,7 @@ def main():
                 y = row * tile_height
                 frame[y:y+tile_height, x:x+tile_width] = tile_arr
         
-        # Update and draw balls
+        # Update ball physics
         dt = 1.0 / fps
         for i in range(num_balls):
             # Apply gravity
@@ -126,25 +119,27 @@ def main():
                 ball_y[i] = bg_height - ball_radius[i]
                 ball_vy[i] *= -elasticity
             
-            # Draw ball as circle
-            center = (int(ball_x[i]), int(ball_y[i]))
-            cv2.circle(frame, center, ball_radius[i], ball_colors[i], -1)
+            # Draw ball as circle using numpy mask
+            y_coords, x_coords = np.ogrid[:bg_height, :bg_width]
+            mask = (x_coords - ball_x[i])**2 + (y_coords - ball_y[i])**2 <= ball_radius[i]**2
+            frame[mask] = ball_colors[i]
         
-        # Save first and last frames
+        # Save first and last frames as PNG
         if frame_idx == 0:
-            cv2.imwrite('./output/tiles_basic_first.png', frame)
+            Image.fromarray(frame).save('./output/tiles_basic_first.png')
         if frame_idx == num_frames - 1:
-            cv2.imwrite('./output/tiles_basic_last.png', frame)
+            Image.fromarray(frame).save('./output/tiles_basic_last.png')
         
-        writer.write(frame)
+        writer.append_data(frame)
     
-    writer.release()
+    writer.close()
+    
     print(f"✅ Video saved: ./output/tiles_basic.mp4")
     print(f"✅ First frame: ./output/tiles_basic_first.png")
     print(f"✅ Last frame: ./output/tiles_basic_last.png")
     print(f"\nSimulation complete:")
     print(f"  - Background: {bg_width}x{bg_height} pixels")
-    print(f"  - Tiles: {BACKGROUND_TILES_WIDE}x{BACKGROUND_TILES_TALL} grid ({len(tiles)} unique tiles)")
+    print(f"  - Tiles: {BACKGROUND_TILES_WIDE}x{BACKGROUND_TILES_TALL} grid (single tile repeated)")
     print(f"  - Balls: {num_balls}")
     print(f"  - Frames: {num_frames}")
 
