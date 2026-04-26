@@ -47,8 +47,14 @@ def main():
     tiles = load_tiles(TILES_IMAGE, GRID_COLS, GRID_ROWS)
     print(f"Loaded {len(tiles)} tiles (4x4 grid)")
     
+    # Pick ONE random tile to use for the entire background
+    tile_idx = np.random.randint(0, len(tiles))
+    tile = tiles[tile_idx]
+    tile_arr = np.array(tile.convert('RGB'))
+    print(f"Selected tile {tile_idx} for background (will repeat)")
+    
     # Get tile dimensions
-    tile_width, tile_height = tiles[0].size
+    tile_width, tile_height = tile.size
     print(f"Tile size: {tile_width}x{tile_height}")
     
     # Create large background
@@ -88,18 +94,12 @@ def main():
         # Create dark background with tiled pattern
         frame = np.zeros((bg_height, bg_width, 3), dtype=np.uint8)
         
-        # Draw tiled background using tiles from image
-        tile_idx = 0
+        # Draw tiled background - repeat the SAME tile everywhere
         for row in range(BACKGROUND_TILES_TALL):
             for col in range(BACKGROUND_TILES_WIDE):
-                tile = tiles[tile_idx % len(tiles)]
-                tile_arr = np.array(tile.convert('RGB'))
-                
                 x = col * tile_width
                 y = row * tile_height
-                
                 frame[y:y+tile_height, x:x+tile_width] = tile_arr
-                tile_idx += 1
         
         # Update and draw balls
         dt = 1.0 / fps
