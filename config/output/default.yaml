@@ -1,0 +1,11 @@
+formats:
+  - png
+  - h5
+
+video:
+  codec: auto          # 'auto' triggers detection, or specify 'libx264', 'mp4v', etc.
+  format: mp4
+  fps: 30
+  pixelformat: yuv420p
+
+h5_compression: gzip

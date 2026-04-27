@@ -11,6 +11,8 @@ import json
 from omegaconf import OmegaConf
 from typing import List, Optional, Tuple, Union, Dict, Any
 from .shapes import Shape
+from .output.codec import CodecDetector
+from .physics.transform import CoordinateTransform
 
 
 class SimulationExporter:
@@ -20,7 +22,7 @@ class SimulationExporter:
     Automatically handles:
     - Coordinate system conversion from physics space to pixel space
     - RGB to BGR conversion for OpenCV
-    - Video encoding
+    - Video encoding with automatic codec detection
     - Frame buffer management
     - Image and video export
     - Automatic Hydra config saving for reproducibility
@@ -31,6 +33,8 @@ class SimulationExporter:
         resolution: Tuple[int, int],
         output_dir: str = "./output",
         fps: int = 30,
+        codec: Optional[str] = None,
+        bounds: Tuple[float, float] = (-1.0, 1.0),
         cfg: Any = None
     ):
         """
@@ -40,15 +44,33 @@ class SimulationExporter:
             resolution: (height, width) of output
             output_dir: Directory to save outputs
             fps: Frames per second for video
+            codec: Video codec to use. If None, auto-detects best codec.
+            bounds: Physics coordinate bounds (min, max)
             cfg: Hydra config object to save for reproducibility
         """
         self.height, self.width = resolution
         self.output_dir = output_dir
         self.fps = fps
         self.cfg = cfg
+        self.bounds = bounds
         self.frames: List[np.ndarray] = []
 
         os.makedirs(output_dir, exist_ok=True)
+
+        # Create coordinate transform for physics-to-pixel conversion
+        self.transform = CoordinateTransform(
+            physics_bounds=bounds,
+            resolution=resolution
+        )
+
+        # Auto-detect codec if not specified
+        if codec is None:
+            self.codec, self.container_format = CodecDetector.get_best_codec('mp4')
+        else:
+            self.codec = codec
+            self.container_format = 'mp4'
+        
+        self.fourcc = cv2.VideoWriter_fourcc(*self.codec)
 
         # Save config immediately if provided
         if cfg is not None:
@@ -73,10 +95,10 @@ class SimulationExporter:
         frame = np.zeros((self.height, self.width, 3), dtype=np.uint8)
 
         for shape in shapes:
-            # Convert physics coordinates (-1 to 1) to pixel coordinates
-            x = int((shape.position[batch_idx, 0].item() + 1.0) * (self.width / 2))
-            y = int((1.0 - shape.position[batch_idx, 1].item()) * (self.height / 2))
-            size = int(shape.size[batch_idx, 0].item() * (self.height / 2))
+            # Convert physics coordinates to pixel coordinates using CoordinateTransform
+            x = self.transform.physics_to_pixel_x(shape.position[batch_idx, 0].item())
+            y = self.transform.physics_to_pixel_y(shape.position[batch_idx, 1].item())
+            size = self.transform.physics_size_to_pixel(shape.size[batch_idx, 0].item())
 
             # Convert RGB to BGR for OpenCV
             color = (
@@ -102,7 +124,18 @@ class SimulationExporter:
         return path
 
     def save_video(self, filename: str, frames: Optional[List[np.ndarray]] = None) -> str:
-        """Save buffered frames to video file."""
+        """
+        Save buffered frames to video file using auto-detected codec.
+        
+        Automatically saves config if available.
+
+        Args:
+            filename: Output filename
+            frames: Frames to save (uses buffer if None)
+
+        Returns:
+            Path to saved video file
+        """
         if frames is None:
             frames = self.frames
 
@@ -110,14 +143,25 @@ class SimulationExporter:
             raise ValueError("No frames to export")
 
         path = os.path.join(self.output_dir, filename)
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        writer = cv2.VideoWriter(path, fourcc, self.fps, (self.width, self.height))
+        writer = cv2.VideoWriter(path, self.fourcc, self.fps, (self.width, self.height))
+
+        if not writer.isOpened():
+            available = CodecDetector.detect_available_codecs()
+            raise RuntimeError(
+                f"Failed to open video writer with codec '{self.codec}'. "
+                f"Available codecs: {available}"
+            )
 
         for frame in frames:
             writer.write(frame)
 
         writer.release()
         self.frames.clear()
+
+        # Always save config when saving video if available
+        if self.cfg is not None:
+            self.save_config()
+
         return path
 
     def save_config(self, cfg: Any = None, filename: str = "config.yaml") -> str:
@@ -158,32 +202,3 @@ class SimulationExporter:
     def clear(self) -> None:
         """Clear internal frame buffer."""
         self.frames.clear()
-
-    def save_video(self, filename: str, frames: Optional[List[np.ndarray]] = None) -> str:
-        """Save buffered frames to video file and automatically save config."""
-        path = super().save_video(filename, frames) if hasattr(super(), 'save_video') else self._save_video(filename, frames)
-
-        # Always save config when saving video if available
-        if self.cfg is not None:
-            self.save_config()
-
-        return path
-
-    def _save_video(self, filename: str, frames: Optional[List[np.ndarray]] = None) -> str:
-        """Internal video save implementation."""
-        if frames is None:
-            frames = self.frames
-
-        if len(frames) == 0:
-            raise ValueError("No frames to export")
-
-        path = os.path.join(self.output_dir, filename)
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        writer = cv2.VideoWriter(path, fourcc, self.fps, (self.width, self.height))
-
-        for frame in frames:
-            writer.write(frame)
-
-        writer.release()
-        self.frames.clear()
-        return path
